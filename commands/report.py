@@ -437,6 +437,9 @@ def report(accounts, config, args):
         group[finding.issue_id] = issue
         t["findings"][conf["group"]] = group
 
+    # Add CyberArk placeholder
+    t["findings"]["CyberArk"] = {}
+
     # Generate report from template
     with open(args.output_file, "w") as f:
         f.write(template.render(t=t))
