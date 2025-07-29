@@ -102,8 +102,8 @@ class TestPrepare(unittest.TestCase):
         config = {
             "accounts": [{"id": 123456789012, "name": "demo"}],
             "cidrs": {
-                "1.1.1.1/32": {"name": "SF Office"},
-                "2.2.2.2/28": {"name": "NY Office"},
+                "1.1.1.1/32": {"name": "GPSU Demo"},
+                "2.2.2.2/28": {"name": "GPSU Demo"},
             },
         }
 
