@@ -1,6 +1,6 @@
 {  "accounts":
     [
-        {"id": "123456789012", "name": "demo", "default": true}
+        {"id": "123456789012", "name": "GPSU Intern Demo", "default": true}
     ],
     "cidrs":
     {
