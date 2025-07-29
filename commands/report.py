@@ -3,6 +3,8 @@ import argparse
 import json
 import yaml
 import os.path
+import subprocess
+import sys
 from jinja2 import Template
 
 from shared.common import (
@@ -396,6 +398,111 @@ def report(accounts, config, args):
         color_index = (color_index + 1) % len(COLOR_PALETTE)
 
     t["findings"] = {}
+    
+    # Add CyberArk findings by running script.py
+    print("* Running CyberArk analysis script")
+    try:
+        # Run the script.py from parent directory
+        script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "script.py")
+        result = subprocess.run([sys.executable, script_path], 
+                              capture_output=True, text=True, cwd=os.path.dirname(script_path))
+        
+        if result.returncode == 0:
+            # Parse the output to extract user data
+            cyberark_output = result.stdout
+            missing_users_data = []
+            
+            # Split output by user entries (each user is a JSON object)
+            user_entries = cyberark_output.split('\n\n')
+            for entry in user_entries:
+                if entry.strip() and '{' in entry:
+                    try:
+                        user_data = json.loads(entry.strip())
+                        missing_users_data.append(user_data)
+                    except json.JSONDecodeError:
+                        continue
+            
+            # Create CyberArk finding with the results
+            t["findings"]["CyberArk"] = {
+                "CYBERARK_MISSING_USERS": {
+                    "title": "AWS IAM Users Missing from CyberArk Safe",
+                    "description": "Users found in AWS IAM group but not managed in CyberArk Safe",
+                    "severity": "High",
+                    "severity_color": "rgba(216, 91, 84, 1)",
+                    "is_global": True,
+                    "accounts": {}
+                }
+            }
+            
+            # Add data for each account
+            for account in accounts:
+                t["findings"]["CyberArk"]["CYBERARK_MISSING_USERS"]["accounts"][account["id"]] = {
+                    "account_name": account["name"],
+                    "regions": {
+                        "global": {
+                            "hits": [{
+                                "resource": f"Missing Users Analysis ({len(missing_users_data)} users)",
+                                "details": json.dumps({
+                                    "total_missing_users": len(missing_users_data),
+                                    "missing_users": missing_users_data,
+                                    "script_output": cyberark_output[:1000] + "..." if len(cyberark_output) > 1000 else cyberark_output
+                                }, indent=4)
+                            }]
+                        }
+                    }
+                }
+        else:
+            # Script failed, show error
+            t["findings"]["CyberArk"] = {
+                "CYBERARK_ERROR": {
+                    "title": "CyberArk Script Execution Error",
+                    "description": "Failed to run CyberArk analysis script",
+                    "severity": "Medium",
+                    "severity_color": "rgba(252, 209, 83, 1)",
+                    "is_global": True,
+                    "accounts": {
+                        accounts[0]["id"]: {
+                            "account_name": accounts[0]["name"],
+                            "regions": {
+                                "global": {
+                                    "hits": [{
+                                        "resource": "Script Execution Error",
+                                        "details": json.dumps({
+                                            "error": result.stderr,
+                                            "return_code": result.returncode
+                                        }, indent=4)
+                                    }]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    except Exception as e:
+        # Exception occurred, show error
+        t["findings"]["CyberArk"] = {
+            "CYBERARK_EXCEPTION": {
+                "title": "CyberArk Analysis Exception",
+                "description": "Exception occurred while running CyberArk analysis",
+                "severity": "Medium",
+                "severity_color": "rgba(252, 209, 83, 1)",
+                "is_global": True,
+                "accounts": {
+                    accounts[0]["id"]: {
+                        "account_name": accounts[0]["name"],
+                        "regions": {
+                            "global": {
+                                "hits": [{
+                                    "resource": "Analysis Exception",
+                                    "details": json.dumps({"exception": str(e)}, indent=4)
+                                }]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    
     for finding in findings:
         conf = audit_config[finding.issue_id]
         group = t["findings"].get(conf["group"], {})
@@ -436,9 +543,6 @@ def report(accounts, config, args):
 
         group[finding.issue_id] = issue
         t["findings"][conf["group"]] = group
-
-    # Add CyberArk placeholder
-    t["findings"]["CyberArk"] = {}
 
     # Generate report from template
     with open(args.output_file, "w") as f:
