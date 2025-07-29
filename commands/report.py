@@ -412,23 +412,60 @@ def report(accounts, config, args):
             cyberark_output = result.stdout
             missing_users_data = []
             
-            # Split output by user entries (each user is a JSON object)
-            user_entries = cyberark_output.split('\n\n')
-            for entry in user_entries:
-                if entry.strip() and '{' in entry:
-                    try:
-                        user_data = json.loads(entry.strip())
+            # Better parsing - look for complete JSON objects in the output
+            import re
+            # Find all JSON objects in the output using regex
+            json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+            json_matches = re.findall(json_pattern, cyberark_output, re.DOTALL)
+            
+            for json_str in json_matches:
+                try:
+                    # Clean up the JSON string
+                    cleaned_json = json_str.strip()
+                    user_data = json.loads(cleaned_json)
+                    # Only add if it looks like a user object
+                    if "UserName" in user_data:
                         missing_users_data.append(user_data)
-                    except json.JSONDecodeError:
-                        continue
+                except json.JSONDecodeError:
+                    continue
+            
+            # Check if any users are missing
+            if missing_users_data:
+                # Users found - High severity
+                severity = "High"
+                severity_color = "rgba(216, 91, 84, 1)"
+                title = "AWS IAM Users Missing from CyberArk Safe"
+                description = f"Found {len(missing_users_data)} AWS IAM users that are not managed in CyberArk Safe"
+                
+                # Format user details nicely
+                user_details = []
+                for user in missing_users_data:
+                    user_info = {
+                        "username": user.get("UserName", "Unknown"),
+                        "user_id": user.get("UserId", "N/A"),
+                        "arn": user.get("Arn", "N/A"),
+                        "create_date": user.get("CreateDate", "N/A"),
+                        "path": user.get("Path", "N/A")
+                    }
+                    user_details.append(user_info)
+                
+                resource_name = f"Missing Users Found: {len(missing_users_data)} users need CyberArk management"
+            else:
+                # No users missing - Info severity (good finding)
+                severity = "Info"
+                severity_color = "rgba(154, 214, 156, 1)"
+                title = "CyberArk Coverage Complete"
+                description = "All AWS IAM users are properly managed in CyberArk Safe"
+                user_details = []
+                resource_name = "No Missing Users: All AWS IAM users are managed in CyberArk"
             
             # Create CyberArk finding with the results
             t["findings"]["CyberArk"] = {
-                "CYBERARK_MISSING_USERS": {
-                    "title": "AWS IAM Users Missing from CyberArk Safe",
-                    "description": "Users found in AWS IAM group but not managed in CyberArk Safe",
-                    "severity": "High",
-                    "severity_color": "rgba(216, 91, 84, 1)",
+                "CYBERARK_ANALYSIS": {
+                    "title": title,
+                    "description": description,
+                    "severity": severity,
+                    "severity_color": severity_color,
                     "is_global": True,
                     "accounts": {}
                 }
@@ -436,16 +473,20 @@ def report(accounts, config, args):
             
             # Add data for each account
             for account in accounts:
-                t["findings"]["CyberArk"]["CYBERARK_MISSING_USERS"]["accounts"][account["id"]] = {
+                t["findings"]["CyberArk"]["CYBERARK_ANALYSIS"]["accounts"][account["id"]] = {
                     "account_name": account["name"],
                     "regions": {
                         "global": {
                             "hits": [{
-                                "resource": f"Missing Users Analysis ({len(missing_users_data)} users)",
+                                "resource": resource_name,
                                 "details": json.dumps({
-                                    "total_missing_users": len(missing_users_data),
-                                    "missing_users": missing_users_data,
-                                    "script_output": cyberark_output[:1000] + "..." if len(cyberark_output) > 1000 else cyberark_output
+                                    "analysis_summary": {
+                                        "total_missing_users": len(missing_users_data),
+                                        "status": "Missing users found" if missing_users_data else "All users managed",
+                                        "recommendation": "Add missing users to CyberArk Safe" if missing_users_data else "Continue monitoring"
+                                    },
+                                    "missing_users": user_details,
+                                    "raw_script_output": cyberark_output.strip()
                                 }, indent=4)
                             }]
                         }
