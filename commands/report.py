@@ -486,7 +486,7 @@ def report(accounts, config, args):
                                         "recommendation": "Add missing users to CyberArk Safe" if missing_users_data else "Continue monitoring"
                                     },
                                     "missing_users": user_details,
-                                    "raw_script_output": cyberark_output.strip()
+                                    
                                 }, indent=4)
                             }]
                         }
