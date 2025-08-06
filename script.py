@@ -46,7 +46,6 @@ def get_iam_user_details(username):
         capture_output=True,
         text=True
     )
-    print(f"\nDEBUG: get-user result for {username}:\n{result.stdout}\n{result.stderr}")
     if result.returncode == 0:
         user = json.loads(result.stdout).get("User", {})
         # Fix bad ARN if needed - handle multiple patterns
