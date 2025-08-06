@@ -396,11 +396,12 @@ def get_access_advisor_active_counts(account, max_age=90):
             principal_auth["Arn"],
         )
         if job_details is None:
-            print(
-                "Missing data for arn {} in {}".format(
-                    principal_auth["Arn"], account.name
-                )
-            )
+            # Suppress error message for malformed ARNs
+            # print(
+            #     "Missing data for arn {} in {}".format(
+            #         principal_auth["Arn"], account.name
+            #     )
+            # )
             continue
 
         job_id = job_details["JobId"]
