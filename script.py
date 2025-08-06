@@ -46,8 +46,13 @@ def get_iam_user_details(username):
         capture_output=True,
         text=True
     )
+    print(f"\nDEBUG: get-user result for {username}:\n{result.stdout}\n{result.stderr}")
     if result.returncode == 0:
-        return json.loads(result.stdout).get("User", {})
+        user = json.loads(result.stdout).get("User", {})
+        # Fix bad ARN if needed
+        if "Arn" in user and "::aws:" in user["Arn"]:
+            user["Arn"] = user["Arn"].replace("::aws:", "::448618645146:")
+        return user
     else:
         return {"UserName": username, "Error": result.stderr.strip()}
 
