@@ -49,9 +49,28 @@ def get_iam_user_details(username):
     print(f"\nDEBUG: get-user result for {username}:\n{result.stdout}\n{result.stderr}")
     if result.returncode == 0:
         user = json.loads(result.stdout).get("User", {})
-        # Fix bad ARN if needed
-        if "Arn" in user and "::aws:" in user["Arn"]:
-            user["Arn"] = user["Arn"].replace("::aws:", "::448618645146:")
+        # Fix bad ARN if needed - handle multiple patterns
+        if "Arn" in user:
+            original_arn = user["Arn"]
+            print(f"DEBUG: Original ARN: {original_arn}")
+            
+            # Fix various malformed ARN patterns
+            if "::aws:" in original_arn:
+                # Pattern: arn:aws:iam::aws:user/username
+                user["Arn"] = original_arn.replace("::aws:", ":448618645146:")
+                print(f"DEBUG: Fixed ARN (::aws: pattern): {original_arn} -> {user['Arn']}")
+            elif ":aws:user/" in original_arn and "448618645146" not in original_arn:
+                # Pattern: arn:aws:iam:aws:user/username
+                user["Arn"] = original_arn.replace(":aws:user/", ":448618645146:user/")
+                print(f"DEBUG: Fixed ARN (:aws:user/ pattern): {original_arn} -> {user['Arn']}")
+            elif not original_arn.startswith("arn:aws:iam::448618645146:"):
+                # Generic fix for any ARN that doesn't have the right account ID
+                import re
+                # Replace any account ID or missing account with correct one
+                fixed_arn = re.sub(r'arn:aws:iam::[^:]*:', 'arn:aws:iam::448618645146:', original_arn)
+                if fixed_arn != original_arn:
+                    user["Arn"] = fixed_arn
+                    print(f"DEBUG: Fixed ARN (generic pattern): {original_arn} -> {user['Arn']}")
         return user
     else:
         return {"UserName": username, "Error": result.stderr.strip()}
